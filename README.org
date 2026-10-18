@@ -1,0 +1,190 @@
+#+title: bisos.gitlab: GitLab CE via BISOS Capability Bundles (Dedicated VM; Base Code)
+#+DATE: <2026-10-16 Fri>
+#+AUTHOR: Mohsen BANAN
+#+OPTIONS: toc:4
+
+#+BEGIN: b:org:pypi:readme/topControls :pkgName "gitlab" :comment "basic"
+
+|----------------------+------------------------------------------------------------------|
+| ~Blee Panel Controls~: | [[elisp:(show-all)][Show-All]] : [[elisp:(org-shifttab)][Overview]] : [[elisp:(progn (org-shifttab) (org-content))][Content]] : [[elisp:(delete-other-windows)][(1)]] : [[elisp:(progn (save-buffer) (kill-buffer))][S&Q]] : [[elisp:(save-buffer)][Save]]  : [[elisp:(kill-buffer)][Quit]]  : [[elisp:(bury-buffer)][Bury]] |
+| ~Panel Links~:         | [[file:./py3/panels/bisos.gitlab/_nodeBase_/fullUsagePanel-en.org][Repo Blee Panel]] --  [[file:/bisos/git/auth/bxRepos/bisos-pip/gitlab/py3/panels/bisos.gitlab/_nodeBase_/fullUsagePanel-en.org][Blee Panel]]                                   |
+| ~See Also~:            | [[https://pypi.org/project/bisos.gitlab][At PYPI]] : [[https://github.com/bisos-pip/pycs][bisos.PyCS]]                                             |
+|----------------------+------------------------------------------------------------------|
+
+#+END:
+
+* Overview
+
+/bisos.gitlab/ is a BISOS package for running [[https://about.gitlab.com][GitLab CE]] from its Linux
+package as a BISOS Capability Bundle (CBS/CBM), browsable as =http://gitlab.here=.
+
+*It is base code for a dedicated VM, not yet run.* GitLab is too large for a raw platform: its own
+baseline for one node is 8 vCPU and 16 GB of memory (8 GB as the stated minimum for
+memory-constrained setups), plus 40 GB of disk for the application, PostgreSQL and the
+repositories. Its CBM leaf is to be planted as /available/ --- visible, never brought up by a
+rawBisosCbm materialization (see =bxGenesis/start/rawBisosCBMs/README.org=). Everything here has been
+checked without installing GitLab (see "What Has and Has Not Been Checked").
+
+#+BEGIN: b:org:pypi:readme/pkgDocumentation :pkgName "gitlab-cs" :comment "basic"
+
+# PYPI Documentation Comes Here in _description.org
+#+END:
+
+* Table of Contents     :TOC:
+- [[#overview][Overview]]
+- [[#how-gitlab-fits-the-pattern][How GitLab Fits the Pattern]]
+- [[#the-login][The Login]]
+- [[#what-gets-installed-and-where][What Gets Installed, and Where]]
+- [[#the-3-sboms][The 3 sboms]]
+- [[#what-has-and-has-not-been-checked][What Has and Has Not Been Checked]]
+- [[#materializing-in-a-dedicated-vm][Materializing in a Dedicated VM]]
+- [[#day-to-day-admin-gitlabadmincs][Day-to-Day Admin: =gitlabAdmin.cs=]]
+- [[#key-files][Key Files]]
+- [[#part-of-bisos--bystar-internet-services-operating-system][Part of BISOS]]
+- [[#documentation-and-blee-panels][Documentation and Blee-Panels]]
+- [[#support][Support]]
+- [[#planned-improvements][Planned Improvements]]
+
+* How GitLab Fits the Pattern
+
+=bisos.gitlab= follows the =cbm-package-authorship= pattern (one module of facts, =gitlabInfo.py=;
+a pinned, checksummed source; config written only when absent; a read-only =driftCheck=; server
+and usage sboms joined only by the CBS) with three differences, all from how GitLab's Linux package
+works:
+
+- *GitLab runs its own platform.* The package brings PostgreSQL, Redis, Puma, Sidekiq, Gitaly and
+  workhorse, supervised by runit under one systemd unit of its own, =gitlab-runsvdir.service=.
+  =bisos.gitlab= therefore declares *no systemd unit*: its CBS's unit list is empty.
+- *Configuration is =gitlab.rb= plus =gitlab-ctl reconfigure=* (a Chef run). The sbom writes
+  =/etc/gitlab/gitlab.rb= before installing the package --- which creates one only when it is
+  absent --- and runs =reconfigure= after it.
+- *BISOS's nginx is the front.* The bundled nginx is disabled; workhorse listens on TCP loopback,
+  =127.0.0.1:24016= (banna's =gitlab= port), and =gitlab-wvd.pcs= proxies =gitlab.here= to it.
+
+=gitlab.rb= also sets the memory-constrained settings of GitLab's own guide (Puma with no worker
+processes, Sidekiq concurrency 10, bundled monitoring off, faster memory release) and turns the
+usage ping off.
+
+* The Login
+
+GitLab's administrator is =root=, and GitLab refuses passwords shorter than 8 characters, so the
+rawBisos convention (user =admin=, password the service's name) cannot apply as is. The initial
+password is =rawBisos-gitlab=: set in =gitlab.rb=, applied once when the database is created.
+Insecure by design; securing a host is a separate layer on top.
+
+* What Gets Installed, and Where
+
+| What                           | Where                        | Owner             |
+|--------------------------------+------------------------------+-------------------|
+| GitLab's five accounts         | uid/gid 520--524, banna      | ---               |
+| GitLab CE 19.5.0 (the package) | =/opt/gitlab= (about 4.2 GB) | root              |
+| Its configuration              | =/etc/gitlab/gitlab.rb=      | root 600          |
+| Its data (DB, repositories)    | =/var/opt/gitlab=            | GitLab's accounts |
+| Its logs                       | =/var/log/gitlab=            | GitLab's accounts |
+| glab 1.123.0 (usage side)      | =/opt/glab/current/bin/glab= | root              |
+
+The accounts are =git= (520, shell =/bin/sh= for git over ssh), =gitlab-www= (521), =gitlab-redis=
+(522), =gitlab-psql= (523), =gitlab-prometheus= (524): the gitlab block of =bisos.banna.sysAccts=.
+The sbom creates them first, so banna's check (refuse a number held by someone else) applies, and
+=gitlab.rb= gives GitLab the same numbers.
+
+The package is pinned as =gitlab-ce_19.5.0-ce.0_amd64.deb= for Debian 13 (trixie), with the SHA-256
+from packages.gitlab.com's trixie index (that index matches the repository's =Release= file; the
+=Release= signature was not verified). GitLab builds a package per Debian release, so the sbom
+refuses another release or architecture. Its download path carries the release
+(=pool/trixie/main/...=); the index's =Filename= (=pool/main/...=) returns 404.
+
+* The 3 sboms
+
+| sbom                   | Installs                                             | Pulls in |
+|------------------------+------------------------------------------------------+----------|
+| =gitlab-sbom.pcs=      | accounts, gitlab.rb, the package, reconfigure        | nothing  |
+| =gitlabUsage-sbom.pcs= | glab, GitLab's CLI (small; fine on any raw platform) | nothing  |
+| =gitlabCbs-sbom.pcs=   | nothing of its own                                   | both     |
+
+* What Has and Has Not Been Checked
+
+Checked on a raw platform without GitLab (2026-10-16):
+
+- Every planted file's menu and readme; both sboms' package lists; the bundle lists both sboms.
+- The generated =gitlab.rb= passes =ruby -c=; the vhost passes =nginx -t=; every bash script
+  passes =bash -n=; pyflakes clean; =py3/tests/verify.sh= passes.
+- The package URL answers (a ranged request) and redirects to a storage object named by the pinned
+  SHA-256; glab's tarball was downloaded and matched its published SHA-256.
+
+*Not run anywhere yet:* installing the package, =gitlab-ctl reconfigure= with this =gitlab.rb=
+(including GitLab accepting the banna uids, workhorse on TCP and the root password), the vhost in
+front of workhorse, =gitlabAdmin.cs= against a live GitLab, =cbs_materialize=, the CBM leaf.
+
+* Materializing in a Dedicated VM
+
+On a Debian 13 BISOS VM with at least 8 GB of memory (16 GB recommended) and 40 GB of free disk:
+
+#+begin_src bash
+pip install -e /bisos/git/bxRepos/bisos-pip/gitlab/py3      # or pipx install bisos.gitlab
+gitlab-cbs.pcs -i cbs_materialize        # accounts, gitlab.rb, package, reconfigure; dns, vhost
+gitlabAdmin.cs -i driftCheck             # gitlab.rb, package version, account numbers
+sudo gitlab-rake gitlab:check SANITIZE=true
+curl -s http://127.0.0.1:24016/-/health
+#+end_src
+
+Then browse =http://gitlab.here= and log in as =root= / =rawBisos-gitlab=. The first reconfigure
+takes several minutes, and nginx answers 502 until workhorse is up.
+
+* Day-to-Day Admin: =gitlabAdmin.cs=
+
+#+begin_src bash
+gitlabAdmin.cs -i hostInfo        # fqdn, workhorse port, root login, GitLab's paths
+gitlabAdmin.cs -i servicesInfo    # gitlab-ctl status/restart/tail/reconfigure; dns and vhost
+gitlabAdmin.cs -i checksInfo      # gitlab-rake gitlab:check, env:info; health endpoints
+gitlabAdmin.cs -i driftCheck      # read-only: gitlab.rb, package version, account numbers
+quickGitlab.cs                    # the flat cheat sheet
+#+end_src
+
+* Key Files
+
+- =py3/bisos/gitlab/gitlabInfo.py= --- the single source of facts: the pinned package and glab, the
+  accounts, paths, port, login, the =gitlab.rb= generator and the install scripts.
+- =py3/bin/gitlab-cbs.pcs=, =cbmProc-gitlab.spcs= --- the CBS (no units) and the CBM pointer.
+- =py3/bin/gitlab-sbom.pcs=, =gitlabUsage-sbom.pcs=, =gitlabCbs-sbom.pcs= --- the three sboms.
+- =py3/bin/gitlab-assemble.cs=, =gitlab-here-dns.pcs=, =gitlab-wvd.pcs= --- assembly: dns and vhost.
+- =py3/bin/gitlabAdmin.cs=, =quickGitlab.cs= --- admin CS and cheat sheet.
+- =py3/tests/verify.sh= --- smoke test and =gitlabInfo= invariants; runs without GitLab.
+
+* Part of BISOS — ByStar Internet Services Operating System
+
+Layered on top of Debian, *BISOS* (By* Internet Services Operating System) is a unified and
+universal framework for developing both internet services and software-service continuums that use
+internet services. See [[https://github.com/bxGenesis/start][Bootstrapping ByStar, BISOS and Blee]] for
+getting started with BISOS.
+
+*BISOS* is a foundation for *The Libre-Halaal ByStar Digital Ecosystem* which is described as a cure
+for losses of autonomy and privacy in a book titled:
+[[https://github.com/bxplpc/120033][Nature of Polyexistentials]]
+
+/bisos.gitlab/ is part of BISOS. It is a standalone package that can be used independently of the
+full BISOS environment.
+
+* Documentation and Blee-Panels
+
+bisos.gitlab is part of the ByStar Digital Ecosystem [[http://www.by-star.net]]. Its primary
+documentation is in the form of Blee-Panels, in =./py3/panels=; see
+[[file:./py3/panels/bisos.gitlab/_nodeBase_/fullUsagePanel-en.org]] for a starting point. It is best
+developed with [[https://github.com/bx-blee][Blee]], the /By* BISOS Libre-Halaal Emacs Environment/.
+
+* Support
+
+For support, criticism, comments and questions; please contact the author/maintainer\\
+[[http://mohsen.1.banan.byname.net][Mohsen Banan]] at: [[http://mohsen.1.banan.byname.net/contact]]
+
+* Planned Improvements
+
+** TODO First materialization, in a dedicated Debian 13 VM; record what it shows
+** TODO Verify the packages.gitlab.com =Release= signature with GitLab's repository key
+** TODO The "secure it" layer: a real root password, HTTPS, listening beyond loopback
+** TODO Plant the CBM leaf in bro_rawBisos as available (=sys/cbm/site/hereWeb/gitlab/= or collective)
+
+
+# Local Variables:
+# eval: (setq-local toc-org-max-depth 4)
+# End:

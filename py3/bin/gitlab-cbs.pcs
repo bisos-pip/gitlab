@@ -1,0 +1,42 @@
+#!/usr/bin/env python
+
+""" #+begin_org
+* Panel::  [[file:./py3/panels/bisos.gitlab/_nodeBase_/fullUsagePanel-en.org]]
+* Overview and Relevant Pointers
+gitlab-cbs.pcs
+cbs: Capability Bundle Specification  -- Based on a cba-sysd.cs seed
+ws: An Web Service  --- /Service Component/ --- GitLab CE as gitlab.here
+n:  No Data    -- Materialization is purely based on Realm-BPO
+p:  Platform    -- Materialization is based on Platform-BPO (Site-BPO is not used)
+
+*For a dedicated VM only; base code, untested.* Its CBM leaf is planted as available, never enabled
+in a rawBisosCbm materialization.
+
+The bundle: gitlabCbs-sbom.pcs, which runs gitlab-sbom.pcs (accounts, gitlab.rb, the pinned package,
+gitlab-ctl reconfigure) and gitlabUsage-sbom.pcs (glab); no systemd units of its own (GitLab runs its
+services under gitlab-runsvdir.service, which its package installs and enables); and
+gitlab-assemble.cs (gitlab.here dns + nginx vhost).
+cba_seed takes one sbom, hence gitlabCbs-sbom.pcs rather than both names here.
+#+end_org """
+
+from bisos.capability import cba_sysd_seed
+from bisos.capability import cba_seed
+
+cba_seed.setup(
+    seedType="systemd",  # Extend using cba_sysd_seed.setup
+    loader=None,
+    sbom="gitlabCbs-sbom.pcs",
+    assemble="gitlab-assemble.cs",
+    materialize=None,
+)
+
+# Empty: gitlab-runsvdir.service is GitLab's own (installed and enabled by its package); every GitLab
+# process runs under it, managed by gitlab-ctl. bisos.capability skips an empty list.
+sysdUnitsListGitlab = [
+]
+
+cba_sysd_seed.setup(
+    sysdUnitsList=sysdUnitsListGitlab,
+)
+
+cba_sysd_seed.plantWithWhich("cba-sysd.cs")

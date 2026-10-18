@@ -1,0 +1,73 @@
+#+title: Development Status & Continuation Handoff
+#+TAGS: me ai aiAndMe
+
+# Provenance (installed once by aiActivity.cs --- not regenerated):
+#   Date:      2026-10-16T21:00:16+00:00
+#   User:      bystar
+#   Templates: /bisos/apps/defaults/ai-templates
+#   Command:   /bisos/venv/py3/devbin/aiActivity.cs -i initiate --activity=bisos-pip
+
+####+BEGIN: b:ai:file/particulars
+* AI Working Context
+  Working Directory: /bisos/git/auth/bxRepos/bisos-pip/gitlab
+  File: /bisos/git/auth/bxRepos/bisos-pip/gitlab/AI-DevStatus.org
+  Activity: bisos-pip
+  Companion Docs: AI-WORKFLOW.org, AI-Activity.org, AI-DevStatus.org
+####+END:
+
+Last updated: 2026-10-16 (base code created; not materialized).
+
+This file is a working-state handoff so development can continue on another
+machine (which has this repo but NOT the developer's =~=). It captures the
+architecture, what works, what is untested and the design decisions made so far.
+
+This file is maintained by Claude. Updates are typically triggered by the
+=/bx-status-update= slash command, after major interactions, or before a release.
+
+* Current State
+  - bisos.gitlab is *base code* for GitLab CE 19.5.0 (Linux package, Debian 13 / amd64) as a hereWeb
+    capability at http://gitlab.here, for a dedicated VM. Created 2026-10-16; checked without
+    installing GitLab; never materialized. Installed editable in bisos3 (commands only). Not committed.
+  - The root password (rawBisos-gitlab) departs from the rawBisos convention and awaits confirmation.
+
+* Architecture
+  - py3/bisos/gitlab/gitlabInfo.py --- the single source of facts: the pinned package (version, sha256,
+    URL with the codename), glab, the five accounts and their banna numbers, GitLab's paths, the
+    workhorse port, the login, the gitlab.rb generator, debInstallScript (refuses another Debian
+    release/arch; downloads to /var/tmp), reconfigureScript, glabSetupScript.
+  - py3/bin: gitlab-sbom.pcs (curl, ca-certificates, accounts, gitlab.rb, package, reconfigure),
+    gitlabUsage-sbom.pcs (glab), gitlabCbs-sbom.pcs; gitlab-cbs.pcs (empty unit list);
+    gitlab-here-dns.pcs, gitlab-wvd.pcs, gitlab-assemble.cs; cbmProc-gitlab.spcs; gitlabAdmin.cs
+    (hostInfo, servicesInfo, checksInfo, driftCheck); quickGitlab.cs.
+  - Port (bisos.banna): gitlab=24016 (workhorse, TCP loopback). gitlab.here -> 127.0.22.118 ->
+    BISOS nginx -> 127.0.0.1:24016. Accounts 520-524 (the gitlab block).
+
+* What Works
+  Checked on a raw platform without GitLab, 2026-10-16: menus and readmes; sbom package lists; the
+  bundle lists both sboms; gitlab.rb passes ruby -c; the vhost passes nginx -t; bash -n of every
+  script; pyflakes; verify.sh (all invariants PASS); the package URL answers and redirects to an
+  object named by the pinned sha256; glab's tarball matched its published sha256.
+
+* What Is Untested
+  - Everything that needs GitLab installed: the package install, gitlab-ctl reconfigure with this
+    gitlab.rb (banna uids, workhorse on TCP, the root password accepted), the vhost in front of
+    workhorse (including ActionCable), gitlabAdmin.cs live, cbs_materialize, the CBM leaf.
+  - The packages.gitlab.com Release signature (not verified with GitLab's key).
+
+* Key Design Decisions
+  - Base only here; materialized in a dedicated VM (user, 2026-10-16): GitLab's baseline is 8 vCPU /
+    16 GB (8 GB memory-constrained) and its package brings its own platform.
+  - No systemd unit of ours: GitLab's gitlab-runsvdir.service supervises everything (runit). The CBS's
+    unit list is empty.
+  - gitlab.rb written before the package (which creates one only when absent), then reconfigure.
+  - Bundled nginx off; workhorse on TCP loopback behind BISOS nginx (the .here pattern).
+  - Accounts created first with banna's numbers (the gitlab block), and the same numbers in gitlab.rb.
+  - Memory-constrained per GitLab's guide; usage ping off; registry and KAS off.
+  - Login root / rawBisos-gitlab: GitLab's admin is root and needs 8+ characters.
+  - Usage side: glab, a tarball pinned by sha256 (small; fine on a raw platform).
+  - Out of chain (under git): bxGenesis/start/rawBisosCBMs/README.org (gitlab: base only, available,
+    dedicated VM); the cbm-package-authorship skill.
+
+# Local Variables:
+# eval: (setq-local toc-org-max-depth 4)
+# End:

@@ -1,0 +1,171 @@
+#!/usr/bin/env python
+
+""" #+begin_org
+* Panel::  [[file:./py3/panels/bisos.gitlab/_nodeBase_/fullUsagePanel-en.org]]
+* Overview and Relevant Pointers
+gitlab-sbom.pcs: software bill of materials of the GitLab CE hereWeb capability.
+*Base only: not materialized on a raw platform* --- GitLab's own baseline is 8 vCPU / 16 GB for one
+node; this is run and tested in a dedicated VM. Untested so far.
+The GitLab Linux package is pinned (version and SHA-256, Debian 13 / amd64) and installed with apt.
+Before it, the accounts are created with banna's numbers and /etc/gitlab/gitlab.rb is written (once):
+bundled nginx off, workhorse on TCP loopback for BISOS's nginx, memory-constrained settings, the
+rawBisos root password. After it, gitlab-ctl reconfigure applies gitlab.rb and starts GitLab's own
+services (gitlab-runsvdir.service; runit inside).
+This is the server only. The usage side (glab) is gitlabUsage-sbom.pcs, which this sbom does not pull
+in; gitlabCbs-sbom.pcs, the sbom of gitlab-cbs.pcs, runs both.
+#+end_org """
+
+from bisos import b
+from bisos.b import cs
+from bisos.b import b_io
+
+from bisos.sbom import pkgsSeed  # pkgsSeed.plantWithWhich("seedSbom.cs")
+from bisos.banna import sysAccts
+from bisos.gitlab.gitlabInfo import (
+    gitlabInfo, gitlabRbContent, debInstallScript, reconfigureScript,
+)
+
+ap = pkgsSeed.aptPkg
+
+# The facts of the installation --- the pinned package, accounts, paths, port, login --- come from
+# bisos.gitlab.gitlabInfo, the one source gitlabAdmin.cs, dns and vhost read too.
+#
+# Each func-bearing pseudo-package below runs on *every* sbom_fullUpdate and must stay idempotent.
+# Ordering is load-bearing: accounts and gitlab.rb before the package; reconfigure after it.
+
+
+def _bash(script: str) -> b.op.Outcome:
+    outcome = b.subProc.WOpW(invedBy=None, log=1).bash(script)
+    if outcome.isProblematic():
+        b_io.eh.badOutcome(outcome)
+    return outcome
+
+
+def gitlabAcctsSetup():
+    """GitLab's five accounts with banna's numbers (the gitlab block). Not an apt package.
+
+    The package would create them itself with numbers of its own choosing; gitlab.rb gives it these,
+    and creating them first makes useraddScript's check (refuse a number held by someone else) apply.
+    """
+    return _bash("set -e\n" + "\n".join(sysAccts.useraddScript(a) for a in gitlabInfo.accounts))
+
+
+def gitlabRbSetup():
+    """/etc/gitlab/gitlab.rb, written only when absent, root 600. Not an apt package.
+
+    The package creates its own template only when the file is absent, so writing it first makes
+    ours the one reconfigure uses. gitlabAdmin.cs -i driftCheck reports how it differs later.
+    """
+    i = gitlabInfo
+    return _bash(f"""
+set -e
+sudo mkdir -p {i.confDir}
+sudo chmod 775 {i.confDir}
+if [ ! -f {i.gitlabRb} ] ; then
+    sudo tee {i.gitlabRb} >/dev/null <<'GITLAB_RB_EOF'
+{gitlabRbContent()}GITLAB_RB_EOF
+fi
+sudo chown root:root {i.gitlabRb}
+sudo chmod 600 {i.gitlabRb}
+""")
+
+
+def gitlabDebSetup():
+    """The pinned GitLab CE Linux package, downloaded, verified, installed. Not an apt package (itself)."""
+    return _bash(debInstallScript())
+
+
+def gitlabReconfigure():
+    """gitlab-ctl reconfigure: GitLab's idempotent apply of gitlab.rb (a Chef run; minutes). Not an apt package."""
+    return _bash(reconfigureScript())
+
+
+aptPkgsList = [
+    ap("curl"),                                         # Fetches the package
+    ap("ca-certificates"),
+    ap("gitlabAcctsSetup", func=gitlabAcctsSetup),
+    ap("gitlabRbSetup", func=gitlabRbSetup),           # before the package: ours is the gitlab.rb used
+    ap("gitlabDebSetup", func=gitlabDebSetup),
+    ap("gitlabReconfigure", func=gitlabReconfigure),   # after the package
+]
+
+pkgsSeed.setup(
+    aptPkgsList=aptPkgsList,
+)
+
+
+####+BEGIN: b:py3:cs:cmnd/classHead :cmndName "readme" :extent "verify" :comment "Describe" :parsMand "" :parsOpt "" :argsMin 0 :argsMax 0 :pyInv ""
+""" #+begin_org
+*  _[[elisp:(blee:menu-sel:outline:popupMenu)][±]]_ _[[elisp:(blee:menu-sel:navigation:popupMenu)][Ξ]]_ [[elisp:(outline-show-branches+toggle)][|=]] [[elisp:(bx:orgm:indirectBufOther)][|>]] *[[elisp:(blee:ppmm:org-mode-toggle)][|N]]*  CmndSvc-   [[elisp:(outline-show-subtree+toggle)][||]] <<readme>>  *Describe*  =verify= ro=cli   [[elisp:(org-cycle)][| ]]
+#+end_org """
+class readme(cs.Cmnd):
+    cmndParamsMandatory = [ ]
+    cmndParamsOptional = [ ]
+    cmndArgsLen = {'Min': 0, 'Max': 0,}
+
+    @cs.track(fnLoc=True, fnEntry=True, fnExit=True)
+    def cmnd(self,
+             rtInv: cs.RtInvoker,
+             cmndOutcome: b.op.Outcome,
+    ) -> b.op.Outcome:
+        """Describe"""
+        failed = b_io.eh.badOutcome
+        callParamsDict = {}
+        if self.invocationValidate(rtInv, cmndOutcome, callParamsDict, None).isProblematic():
+            return failed(cmndOutcome)
+####+END:
+        i = gitlabInfo
+        accts = ", ".join(f"{a} {sysAccts.sysAcctOf(a).uid}" for a in i.accounts)
+        descriptionStr = f"""\
+** Scope: GitLab CE {i.version} for a dedicated VM (Debian {i.debianCodename}, {i.debArch}),
+   browsed as {i.baseUrl}.  BASE ONLY: not materialized on a raw platform; untested so far.
+   Login: {i.rootUser} / {i.rootPassword}  (rawBisos; GitLab needs 8+ characters; insecure)
+
+** What this installs:
+  1) apt packages: curl, ca-certificates.
+  2) gitlabAcctsSetup: {accts}  (bisos.banna, the gitlab block)
+  3) gitlabRbSetup: {i.gitlabRb} (only when absent): bundled nginx off, workhorse on
+     {i.workhorseAddr}, banna uids, memory-constrained, no usage ping, the root password.
+  4) gitlabDebSetup: {i.debName} ({i.debSizeBytes // 1000000} MB, about 4.2 GB installed)
+     verified by SHA-256, installed with apt (once per version).
+  5) gitlabReconfigure: gitlab-ctl reconfigure (GitLab's own Chef run; takes minutes).
+
+** Needs: 8 vCPU / 16 GB for one node per GitLab (8 GB minimum, memory-constrained); 40 GB disk
+   for the application, plus PostgreSQL and the repositories.
+
+** What this does NOT do:
+  - It declares no systemd unit: GitLab runs its services under gitlab-runsvdir.service.
+  - It installs no client: that is gitlabUsage-sbom.pcs (glab).
+
+       gitlab-sbom.pcs -i sbom_fullUpdate\
+"""
+        print(descriptionStr)
+
+        return cmndOutcome.set(
+            opError=b.op.OpError.Success,
+            opResults=None,
+        )
+
+
+def examples_csu() -> b.op.Outcome:
+    """Common Usage Examples for this Command-Service Unit"""
+
+    cmnd = cs.examples.cmndEnter
+    literal = cs.examples.execInsert
+    i = gitlabInfo
+
+    cmndOutcome = b.op.Outcome()
+
+    cs.examples.menuChapter('*GitLab CE -- sbom Examples (dedicated VM only)*')
+    cmnd('readme', comment=" # An overview short description")
+
+    cs.examples.menuChapter('*Installation*')
+    literal("gitlab-sbom.pcs -i sbom_fullUpdate")
+
+    cs.examples.menuChapter('*Verify Installation*')
+    literal("dpkg-query -W gitlab-ce")
+    literal(f"sudo {i.gitlabCtl} status")
+    literal(f"sudo {i.gitlabRake} gitlab:env:info")
+
+    cs.examples.menuChapter('*End-Of GitLab CE -- sbom Examples*')
+    return cmndOutcome

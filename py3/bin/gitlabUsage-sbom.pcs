@@ -1,0 +1,112 @@
+#!/usr/bin/env python
+
+""" #+begin_org
+* Panel::  [[file:./py3/panels/bisos.gitlab/_nodeBase_/fullUsagePanel-en.org]]
+* Overview and Relevant Pointers
+gitlabUsage-sbom.pcs: software bill of materials of the usage side of the GitLab capability --- what a
+host needs to use a GitLab server, local or remote, as opposed to run one: glab, GitLab's official
+CLI, a single binary released on gitlab.com, pinned and checksummed here. git itself is part of
+Raw-BISOS. Unlike the server, this is small and can run on any raw platform.
+It does not need the server. gitlab-sbom.pcs does not pull this sbom in; gitlabCbs-sbom.pcs, the
+sbom of gitlab-cbs.pcs, runs both.
+#+end_org """
+
+from bisos import b
+from bisos.b import cs
+from bisos.b import b_io
+
+from bisos.sbom import pkgsSeed  # pkgsSeed.plantWithWhich("seedSbom.cs")
+from bisos.gitlab.gitlabInfo import gitlabInfo, glabSetupScript
+
+ap = pkgsSeed.aptPkg
+
+
+def _bash(script: str) -> b.op.Outcome:
+    outcome = b.subProc.WOpW(invedBy=None, log=1).bash(script)
+    if outcome.isProblematic():
+        b_io.eh.badOutcome(outcome)
+    return outcome
+
+
+def glabSetup():
+    """The pinned glab tarball, verified, unpacked root-owned, current -> it. Not an apt package."""
+    return _bash(glabSetupScript())
+
+
+aptPkgsList = [
+    ap("curl"),
+    ap("glabSetup", func=glabSetup),
+]
+
+pkgsSeed.setup(
+    aptPkgsList=aptPkgsList,
+)
+
+
+####+BEGIN: b:py3:cs:cmnd/classHead :cmndName "readme" :extent "verify" :comment "Describe" :parsMand "" :parsOpt "" :argsMin 0 :argsMax 0 :pyInv ""
+""" #+begin_org
+*  _[[elisp:(blee:menu-sel:outline:popupMenu)][±]]_ _[[elisp:(blee:menu-sel:navigation:popupMenu)][Ξ]]_ [[elisp:(outline-show-branches+toggle)][|=]] [[elisp:(bx:orgm:indirectBufOther)][|>]] *[[elisp:(blee:ppmm:org-mode-toggle)][|N]]*  CmndSvc-   [[elisp:(outline-show-subtree+toggle)][||]] <<readme>>  *Describe*  =verify= ro=cli   [[elisp:(org-cycle)][| ]]
+#+end_org """
+class readme(cs.Cmnd):
+    cmndParamsMandatory = [ ]
+    cmndParamsOptional = [ ]
+    cmndArgsLen = {'Min': 0, 'Max': 0,}
+
+    @cs.track(fnLoc=True, fnEntry=True, fnExit=True)
+    def cmnd(self,
+             rtInv: cs.RtInvoker,
+             cmndOutcome: b.op.Outcome,
+    ) -> b.op.Outcome:
+        """Describe"""
+        failed = b_io.eh.badOutcome
+        callParamsDict = {}
+        if self.invocationValidate(rtInv, cmndOutcome, callParamsDict, None).isProblematic():
+            return failed(cmndOutcome)
+####+END:
+        i = gitlabInfo
+        descriptionStr = f"""\
+** Scope: the usage side of the GitLab capability -- what a host needs to use a GitLab server
+   (a dedicated VM's or another), not to run one. Part of bisos.gitlab.
+
+** What this installs:
+  1) apt package: curl.
+  2) glabSetup: glab {i.glabVersion} from gitlab.com, verified by SHA-256, into {i.glabDir},
+     with {i.glabLink} pointing at it: {i.glabBin}
+
+** Standalone: this sbom does not need the server, and is small enough for any raw platform.
+
+** To use it:
+       {i.glabBin} auth login --hostname <gitlab host>      # a personal access token
+       {i.glabBin} repo list
+
+       gitlabUsage-sbom.pcs -i sbom_fullUpdate\
+"""
+        print(descriptionStr)
+
+        return cmndOutcome.set(
+            opError=b.op.OpError.Success,
+            opResults=None,
+        )
+
+
+def examples_csu() -> b.op.Outcome:
+    """Common Usage Examples for this Command-Service Unit"""
+
+    cmnd = cs.examples.cmndEnter
+    literal = cs.examples.execInsert
+    i = gitlabInfo
+
+    cmndOutcome = b.op.Outcome()
+
+    cs.examples.menuChapter('*GitLab Usage -- sbom Examples*')
+    cmnd('readme', comment=" # An overview short description")
+
+    cs.examples.menuChapter('*Installation*')
+    literal("gitlabUsage-sbom.pcs -i sbom_fullUpdate")
+
+    cs.examples.menuChapter('*Use It*')
+    literal(f"{i.glabBin} --version")
+    literal(f"{i.glabBin} auth login --hostname {i.fqdn}")
+
+    cs.examples.menuChapter('*End-Of GitLab Usage -- sbom Examples*')
+    return cmndOutcome

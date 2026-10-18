@@ -1,0 +1,95 @@
+#+title: Work Plan
+#+DATE: <2026-06-10 Wed 13:54>
+#+AUTHOR: Mohsen BANAN
+#+OPTIONS: toc:4
+#+TAGS: me ai aiAndMe
+
+# Provenance (installed once by aiActivity.cs --- not regenerated):
+#   Date:      2026-10-16T21:00:16+00:00
+#   User:      bystar
+#   Templates: /bisos/apps/defaults/ai-templates
+#   Command:   /bisos/venv/py3/devbin/aiActivity.cs -i initiate --activity=bisos-pip
+
+####+BEGIN: b:ai:file/particulars
+* AI Working Context
+  Working Directory: /bisos/git/auth/bxRepos/bisos-pip/gitlab
+  File: /bisos/git/auth/bxRepos/bisos-pip/gitlab/AI-WorkPlan.org
+  Activity: bisos-pip
+  Companion Docs: AI-WORKFLOW.org, AI-Activity.org, AI-DevStatus.org
+####+END:
+
+This Work Plan file drives the AI collaborative development.
+Interactions are broken down into "Stages". Each Stage has a set
+of TODOs that I work with Claude to accomplish.
+
+Note to a fresh Claude: read this file together with AI-WORKFLOW.org,
+AI-Activity.org and AI-DevStatus.org to orient yourself. The =<<Context Confirmation>>=
+TODO below is the standard first step, or use =/bx-confirm0= as the automated equivalent.
+TODOs tagged =:ai:= are assigned to Claude. After completing a TODO, summarize results
+under =----- Results: ------= and mark it DONE.
+
+* Stage 0: Confirm AI's Understanding of This Repo's Context
+
+Goal: Confirm AI's understanding of the context and capture that in [[Context Confirmation]] TODO.
+
+
+* Stage 0 TODOs
+** +
+** LOOP [#A] <<Context Confirmation>> for AI (typically triggered by /bx-confirm0) :aiAndMe:
+SCHEDULED: <2026-06-09 Tue>
+Must be repeated each time a new Claude instance is started here.
+Based on the series of files starting from CLAUDE.md in this repo,
+describe succinctly what you have understood.
+Enumerate explicitly which files you have imported and which you have considered.
+Prompt the user to confirm that the desired/appropriate model (/model) is being used for this project.
+Since this is to be repeated, leave the todo tag as LOOP.
+** -
+
+* Stage 1: Create bisos.gitlab as base code for a dedicated VM (cbm-package-authorship pattern)
+
+Goal: GitLab CE as a hereWeb capability at gitlab.here, built here as base code and checked without
+installing GitLab; materialized and tested in a dedicated VM (user, 2026-10-16).
+
+
+* Stage 1 TODOs
+** +
+** TODO [#A] <<1.1>> Create the base code :aiAndMe:
+:PROPERTIES:
+:ORIGIN: Mohsen
+:REPO: this
+:FOUND: <2026-10-16 Fri 21:00>
+:END:
+bisos.gitlab will have base code and will be tested on a different platform (user, 2026-10-16).
+----- Results: ------
+- 2026-10-16. GitLab CE 19.5.0-ce.0 (released 2026-10-15), Debian 13 / amd64, pinned with the SHA-256
+  of packages.gitlab.com's trixie index (index hash matches Release; Release signature not verified).
+  The download path needs the codename (pool/trixie/main/...): the index's Filename gives 404. The URL
+  redirects to a storage object named by the pinned sha256.
+- bisos.banna: gitlab=24016 (workhorse, 127.0.22.118 gitlab.here); the gitlab account block 520-524
+  (git with /bin/sh, gitlab-www, gitlab-redis, gitlab-psql, gitlab-prometheus).
+- Design: no systemd unit of our own (GitLab's gitlab-runsvdir.service; an empty CBS unit list, which
+  bisos.capability skips); gitlab.rb written before the package, then gitlab-ctl reconfigure; bundled
+  nginx off, workhorse on TCP loopback behind BISOS nginx; memory-constrained settings; no usage ping;
+  banna uids in gitlab.rb. Usage side: glab 1.123.0 (tarball, sha256 checked against checksums.txt).
+- Login: root / rawBisos-gitlab. The rawBisos convention (admin / gitlab) cannot apply: GitLab's
+  administrator is root and passwords need 8+ characters. NEEDS the user's confirmation.
+- Checked without GitLab: menus and readmes, sbom lists, gitlab.rb with ruby -c, the vhost with nginx -t,
+  bash -n, pyflakes, verify.sh. NOT run: the package install, reconfigure, the vhost in front of
+  workhorse, gitlabAdmin.cs against a live GitLab, cbs_materialize.
+** TODO [#A] <<1.2>> First materialization in a dedicated Debian 13 VM :aiAndMe:
+At least 8 GB (16 GB recommended), 40 GB disk. README.org, "Materializing in a Dedicated VM".
+Record what reconfigure, gitlab:check and driftCheck show; fix gitlab.rb and the vhost as needed.
+----- Results: ------
+** TODO [#B] <<1.3>> Plant the CBM leaf in bro_rawBisos as available :aiAndMe:
+Never enabled in a rawBisosCbm materialization. Realm to decide: site (the Gitlab-BPO-Server of a
+Rims site) or collective.
+----- Results: ------
+** TODO [#B] <<1.4>> Blee dblock refresh :me:
+----- Results: ------
+** -
+
+
+# Local Variables:
+# eval: (setq-local toc-org-max-depth 4)
+# eval: (setq-local org-log-done 'time)
+# End:
